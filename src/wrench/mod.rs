@@ -7,7 +7,7 @@ use {
         reader::{DatabaseBufReader, DatabaseReader},
     },
     miniserde::{
-        json::{self, Array, Object, Value},
+        json/*::{self, Array, Object, Value}*/,
         ser::Fragment,
         Deserialize, Serialize,
     },
@@ -118,13 +118,10 @@ impl WrenchOpt {
                 .iter()
                 .map(|ch| loader.get_string(ch.column_name_addr))
                 .collect();
-
             let column_names = cnr?;
 
-            //println!("{:?}", column_names);
             let path_table = path_tables.clone().join(&name);
             let path_table_index = path_table.clone().join("index.json");
-            println!("{}", path_table.display());
 
             match t.level {
                 0 => {
