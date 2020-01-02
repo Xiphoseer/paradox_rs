@@ -11,11 +11,10 @@ use {
         ser::Fragment,
         Deserialize, Serialize,
     },
-    std::fs::{read_dir, File},
     std::{
         borrow::Cow,
         collections::BTreeMap,
-        //error::Error,
+        fs::{read_dir, File},
         io::{BufReader, BufWriter, Read, Write},
         path::{Path, PathBuf},
     },
@@ -59,9 +58,6 @@ pub struct HAL<T> {
     _embedded: T,
 }
 
-//#[derive(Debug, Serialize)]
-pub type SimpleTable<'a> = Vec<BTreeMap<&'a str, FW>>;
-
 #[derive(Debug)]
 pub struct FW(Field);
 
@@ -87,6 +83,17 @@ impl WrenchOpt {
         b_config.read_to_string(&mut buf)?;
         let config = json::from_str(&buf)?;
         Ok(config)
+    }
+
+    fn make_file<D: Serialize>(&self, file: &Path, data: &D) -> EmptyResult {
+        let out = json::to_string(data);
+        let p_out = self.output.join(file);
+
+        std::fs::create_dir_all(p_out.parent().unwrap())?;
+        let f_out = File::create(p_out)?;
+        let mut b_out = BufWriter::new(f_out);
+        write!(b_out, "{}", out)?;
+        Ok(())
     }
 
     fn run_store_table<T: DatabaseBufReader>(
@@ -157,13 +164,7 @@ impl WrenchOpt {
                         HAL { _links, _embedded }
                     };
 
-                    let out = json::to_string(&j_single_index);
-                    let p_out = self.output.join(path_table_index);
-
-                    std::fs::create_dir_all(p_out.parent().unwrap())?;
-                    let f_out = File::create(p_out)?;
-                    let mut b_out = BufWriter::new(f_out);
-                    write!(b_out, "{}", out)?;
+                    self.make_file(&path_table_index, &j_single_index)?;
                 }
                 _ => {}
             }
