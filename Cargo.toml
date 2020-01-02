@@ -1,10 +1,21 @@
 [package]
 name = "paradox"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Xiphoseer"]
 edition = "2018"
-license = "MIT"
+license = "MPL-2.0"
 description = "Library for dev/testing for LU related software"
 
 [dependencies]
-assembly = "0.3"
+assembly = { version = "0.6", path = "../assembly/modules/full" }
+wayback = { path = "../wayback" }
+surf = "1"
+clap = "2"
+structopt = "0.3"
+spinners = "1.2"
+#reqwest = "0.9"
+futures = { package = "futures-preview", version = "0.3.0-alpha" }
+tokio = {version = "0.2", features = ["fs"]}
+http = "0.2"
+miniserde = "0.1"
+anyhow = "1.0"

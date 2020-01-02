@@ -1,0 +1,159 @@
+{
+  "tables": {
+    "AccessoryDefaultLoc": {
+      "level": 0
+    },
+    "Activities": {
+      "level": 2
+    },
+    "ActivityRewards": {
+      "level": 2,
+      "many": "activity_rewards"
+    },
+    "ActivityText": {
+      "level": 1
+    },
+    "BaseCombatAIComponent": {
+      "level": 2
+    },
+    "BrickColors": {
+      "level": 0
+    },
+    "CollectibleComponent": {
+      "level": 2
+    },
+    "CurrencyTable": {
+      "level": 2,
+      "many": "currency_table"
+    },
+    "DestructibleComponent": {
+      "level": 2
+    },
+    "EventGating": {
+      "level": 0
+    },
+    "FeatureGating": {
+      "level": 0
+    },
+    "Factions": {
+      "level": 0
+    },
+    "Icons": {
+      "level": 1
+    },
+    "InventoryComponent": {
+      "level": 2,
+      "many": "items"
+    },
+    "ItemComponent": {
+      "level": 2
+    },
+    "ItemSetSkills": {
+      "level": 2,
+      "many": "set_skills"
+    },
+    "ItemSets": {
+      "level": 1,
+      "index": {
+        "id": 0,
+        "rank": 4
+      }
+    },
+    "LootMatrix": {
+      "level": 2,
+      "many": "elements"
+    },
+    "MinifigComponent": {
+      "level": 2
+    },
+    "MinifigDecals_Eyebrows": {
+      "level": 1
+    },
+    "MinifigDecals_Eyes": {
+      "level": 1
+    },
+    "MinifigDecals_Legs": {
+      "level": 2
+    },
+    "MinifigDecals_Mouths": {
+      "level": 1
+    },
+    "MinifigDecals_Torsos": {
+      "level": 2
+    },
+    "MissionNPCComponent": {
+      "level": 2,
+      "many": "missions"
+    },
+    "MissionEmail": {
+      "level": 2
+    },
+    "MissionTasks": {
+      "level": 2,
+      "many": "tasks"
+    },
+    "MissionText": {
+      "level": 2
+    },
+    "Missions": {
+      "level": 2
+    },
+    "ModuleComponent": {
+      "level": 2
+    },
+    "MovementAIComponent": {
+      "level": 2
+    },
+    "NpcIcons": {
+      "level": 2
+    },
+    "PackageComponent": {
+      "level": 1
+    },
+    "PetComponent": {
+      "level": 1
+    },
+    "PhysicsComponent": {
+      "level": 2
+    },
+    "ProximityMonitorComponent": {
+      "level": 1
+    },
+    "RocketLaunchpadControlComponent": {
+      "level": 1
+    },
+    "RebuildComponent": {
+      "level": 2
+    },
+    "Release_Version": {
+      "level": 0
+    },
+    "RenderComponent": {
+      "level": 2
+    },
+    "ScriptComponent": {
+      "level": 2
+    },
+    "SkillBehavior": {
+      "level": 1
+    },
+    "SubscriptionPricing": {
+      "level": 0
+    },
+    "LevelProgressionLookup": {
+      "level": 0
+    },
+    "BrickIDTable": {
+      "level": 0
+    },
+    "VendorComponent": {
+      "level": 2
+    },
+    "brickAttributes": {
+      "level": 0
+    },
+    "mapItemTypes": {
+      "level": 0
+    }
+  }
+}
