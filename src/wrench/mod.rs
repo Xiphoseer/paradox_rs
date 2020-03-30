@@ -26,6 +26,7 @@ use {
         time::Instant,
     },
     structopt::StructOpt,
+    full_moon_compat_luaparse_miniserde::Chunk,
 };
 
 pub mod ser;
@@ -33,7 +34,6 @@ use ser::*;
 pub mod de;
 use de::*;
 pub mod data;
-pub mod lua;
 use data::{Filter, GroupBy};
 
 #[derive(StructOpt)]
@@ -856,7 +856,7 @@ impl WrenchOpt {
                         let res = full_moon::parse(&lua_text);
                         match res {
                             Ok(lua_ast) => {
-                                let chunk = lua::Chunk::wrap(lua_ast);
+                                let chunk = Chunk::wrap(&lua_ast);
                                 let mut path_out_chunk = path_out_scripts.join(relative);
                                 path_out_chunk.set_extension("lua.json");
                                 self.make_file(&path_out_chunk, &chunk)?;

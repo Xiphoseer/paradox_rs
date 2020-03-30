@@ -15,13 +15,14 @@ structopt = "0.3"
 spinners = "1.2"
 #reqwest = "0.9"
 futures = { package = "futures-preview", version = "0.3.0-alpha" }
-tokio = {version = "0.2", features = ["fs"]}
+tokio = { version = "0.2", features = ["fs"] }
 http = "0.2"
 miniserde = "0.1"
 anyhow = "1.0"
 indicatif = "0.14"
 console = "0.9"
 quick-xml = "0.17"
-full_moon = "0.4.0-rc.14"
+full_moon = { version = "0.4.0-rc.14", default-features = false }
+full-moon-compat-luaparse-miniserde = { path = "../full-moon-compat-luaparse-miniserde" }
 encoding_rs_io = "0.1.7"
 encoding_rs = "0.8"
