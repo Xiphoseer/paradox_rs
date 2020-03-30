@@ -192,13 +192,11 @@ pub fn run(opt: &VaultOpt) -> Result<(), anyhow::Error> {
                     ()
                 }
             })
-            .fold(0, |acc, _x| {
-                async move {
-                    if let Some(sr) = spinner_ref {
-                        sr.message(format!("Downloading ... ({})", acc));
-                    }
-                    acc + 1
+            .fold(0, |acc, _x| async move {
+                if let Some(sr) = spinner_ref {
+                    sr.message(format!("Downloading ... ({})", acc));
                 }
+                acc + 1
             })
             .await;
 
