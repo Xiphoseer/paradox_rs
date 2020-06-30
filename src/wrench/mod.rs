@@ -10,6 +10,7 @@ use {
     console::style,
     encoding_rs::WINDOWS_1252,
     encoding_rs_io::DecodeReaderBytesBuilder,
+    full_moon_compat_luaparse::Chunk,
     indicatif::{ProgressBar, ProgressStyle},
     miniserde::{json, Serialize},
     quick_xml::{
@@ -26,7 +27,6 @@ use {
         time::Instant,
     },
     structopt::StructOpt,
-    full_moon_compat_luaparse_miniserde::Chunk,
 };
 
 pub mod ser;

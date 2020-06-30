@@ -22,7 +22,7 @@ anyhow = "1.0"
 indicatif = "0.14"
 console = "0.9"
 quick-xml = "0.17"
-full_moon = { version = "0.4.0-rc.14", default-features = false }
-full-moon-compat-luaparse-miniserde = { path = "../full-moon-compat-luaparse-miniserde" }
+full_moon = { git="https://github.com/Kampfkarren/full-moon.git", default-features = false }
+full-moon-compat-luaparse = { path = "../full-moon-compat-luaparse" }
 encoding_rs_io = "0.1.7"
 encoding_rs = "0.8"
