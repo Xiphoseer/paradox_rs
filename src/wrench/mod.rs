@@ -6,7 +6,6 @@ use {
     encoding_rs::WINDOWS_1252,
     encoding_rs_io::DecodeReaderBytesBuilder,
     full_moon_compat_luaparse::Chunk,
-    futures_intrusive::sync::Semaphore,
     indicatif::{ProgressBar, ProgressStyle},
     memmap::Mmap,
     miniserde::{json, Serialize},
@@ -39,7 +38,6 @@ use io::Write;
 use locale::{expect_attribute, expect_end, expect_start, expect_text};
 use log::trace;
 use std::{borrow::Cow, io, thread, time::Duration};
-use structopt::lazy_static::lazy_static;
 use thread::JoinHandle;
 
 mod fdb;
@@ -73,23 +71,6 @@ pub struct WrenchState {
 
 type Res<T> = Result<T, Error>;
 type EmptyResult = Res<()>;
-
-lazy_static! {
-    /// This is an example for using doc comment attributes
-    static ref FILE_LOCK: Semaphore = Semaphore::new(true, 5);
-}
-
-/*/async fn save_file(out: String, path: PathBuf) -> Result<(), io::Error> {
-    use async_std::fs::File;
-
-    // We need to lock this function so that the executor doesn't load all files before writing to them
-    FILE_LOCK.acquire(1).await;
-
-    let mut f_out = File::create(path).await?;
-    f_out.write_all(out.as_bytes()).await?;
-    f_out.sync_all().await?;
-    Ok(())
-}*/
 
 impl WrenchState {
     fn load_config(&self) -> Res<LoadConfig> {

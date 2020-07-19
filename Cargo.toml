@@ -19,7 +19,6 @@ encoding_rs = "0.8"
 full_moon = { git="https://github.com/Kampfkarren/full-moon.git", default-features = false }
 full-moon-compat-luaparse = { path = "../full-moon-compat-luaparse" }
 futures = "0.3"
-futures-intrusive = "0.3"
 http = "0.2"
 indicatif = "0.14"
 log = "0.4"
