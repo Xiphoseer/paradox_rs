@@ -151,6 +151,7 @@ impl<'a> CollectRow<'a> {
 }
 
 #[derive(new)]
+#[allow(clippy::too_many_arguments)]
 pub struct StoreMulti<'a, 'b, 'c, M>
 where
     M: Fn(&Path, &ManyEntry) -> Res<()>,
@@ -225,6 +226,7 @@ where
 }
 
 #[derive(new)]
+#[allow(clippy::too_many_arguments)]
 pub struct StoreSimple<'a, 'b, M: Fn(&Path, &Row) -> Res<()>> {
     ignore: &'a [Filter<'a>],
     pk: usize,
