@@ -1,6 +1,6 @@
-use crate::util::FileWrapper;
+use async_std::fs::File;
 use futures::{
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    io::{AsyncBufReadExt, BufReader},
     stream::StreamExt,
 };
 use http::Uri;
@@ -11,7 +11,6 @@ use std::{
 };
 use structopt::StructOpt;
 use surf::Client;
-use tokio::{fs::File, runtime::Runtime};
 use wayback::timemap::{Field, FilterBuf, GroupField, Request};
 
 #[derive(StructOpt)]
@@ -61,8 +60,6 @@ fn make_urlkey(uri: &Uri) -> String {
 }
 
 pub fn run(opt: &VaultOpt) -> Result<(), anyhow::Error> {
-    let mut rt = Runtime::new()?;
-
     let prefix = format!("{}", opt.prefix);
     let prefix_key = make_urlkey(&opt.prefix);
     let prefix_len = prefix_key.len();
@@ -96,7 +93,7 @@ pub fn run(opt: &VaultOpt) -> Result<(), anyhow::Error> {
     let client = Client::new();
     //let client = Client::builder().timeout(None).build().unwrap();
 
-    rt.block_on(async move {
+    async_std::task::block_on(async move {
         let spinner = if opt.dry_run {
             None
         } else {
@@ -168,7 +165,7 @@ pub fn run(opt: &VaultOpt) -> Result<(), anyhow::Error> {
 
                     if !opt.dry_run {
                         // create the directory
-                        tokio::fs::create_dir_all(&store).await.unwrap();
+                        async_std::fs::create_dir_all(&store).await.unwrap();
                     }
 
                     name.push(stem);
@@ -186,8 +183,8 @@ pub fn run(opt: &VaultOpt) -> Result<(), anyhow::Error> {
                         println!("=> {}", store.display());
                     } else {
                         let res = client_ref.get(&archive_url).await.unwrap();
-                        let mut file = FileWrapper(File::create(&store).await.unwrap());
-                        res.copy_into(&mut file).await.unwrap();
+                        let mut file = File::create(&store).await.unwrap();
+                        futures::io::copy_buf(res, &mut file).await.unwrap();
                     }
                 }
             })

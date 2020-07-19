@@ -9,6 +9,7 @@ description = "Library for dev/testing for LU related software"
 [dependencies]
 anyhow = "1.0"
 assembly = { version = "0.6", path = "../assembly/modules/full" }
+async-std = "1.6.0"
 clap = "2"
 console = "0.9"
 derive-new = "0.5"
@@ -16,7 +17,7 @@ encoding_rs_io = "0.1.7"
 encoding_rs = "0.8"
 full_moon = { git="https://github.com/Kampfkarren/full-moon.git", default-features = false }
 full-moon-compat-luaparse = { path = "../full-moon-compat-luaparse" }
-futures = { package = "futures-preview", version = "0.3.0-alpha" }
+futures = "0.3"
 http = "0.2"
 indicatif = "0.14"
 log = "0.4"
@@ -26,6 +27,6 @@ quick-xml = "0.17"
 #reqwest = "0.9"
 spinners = "1.2"
 structopt = "0.3"
-surf = "1"
-tokio = { version = "0.2", features = ["fs"] }
+surf = "2.0.0-alpha"
+#tokio = { version = "0.2", features = ["fs"] }
 wayback = { path = "../wayback" }

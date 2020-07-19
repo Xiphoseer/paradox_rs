@@ -15,7 +15,6 @@
 //! - Implement `refs`
 use structopt::StructOpt;
 
-pub mod util;
 pub mod vault;
 pub mod wrench;
 
