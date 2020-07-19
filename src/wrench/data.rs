@@ -1,8 +1,9 @@
 use super::ser::IntoValue;
 use super::{EmptyResult, Res};
-use assembly::fdb::{builder::DatabaseBuilder, file::FDBFieldData};
+use anyhow::anyhow;
+use assembly::fdb::align::Row as RawRow;
 use miniserde::Serialize;
-use std::{collections::btree_map::BTreeMap, ops::Deref};
+use std::{borrow::Cow, collections::btree_map::BTreeMap, ops::Deref};
 
 pub struct Filter<'a> {
     field_index: usize,
@@ -18,7 +19,7 @@ pub enum FilterKind<'a> {
 
 impl<'a> Filter<'a> {
     pub fn string(field_index: usize, pattern: &'a str) -> Res<Self> {
-        match &pattern.split("%").collect::<Vec<_>>()[..] {
+        match &pattern.split('%').collect::<Vec<_>>()[..] {
             [] => unreachable!(),
             [exact] => Ok(Self {
                 field_index,
@@ -36,8 +37,11 @@ impl<'a> Filter<'a> {
         }
     }
 
-    pub fn check<T: DatabaseBuilder>(&self, loader: &mut T, fields: &[FDBFieldData]) -> Res<bool> {
-        let value = loader.try_load_field(&fields[self.field_index])?;
+    pub fn check(&self, row: RawRow) -> Res<bool> {
+        let value = row
+            .field_at(self.field_index)
+            .ok_or_else(|| anyhow!("Check field out of bounds"))?;
+
         match &self.kind {
             FilterKind::StringStartsWith(needle) => {
                 if let Some(s) = value.string() {
@@ -92,17 +96,14 @@ impl<'a> GroupBy<'a> {
         }
     }
 
-    pub fn collect<T: DatabaseBuilder>(
-        &mut self,
-        id: i32,
-        loader: &mut T,
-        fields: &[FDBFieldData],
-    ) -> EmptyResult {
+    pub fn collect<'b>(&mut self, id: i32, row: RawRow<'b>) -> EmptyResult {
         match &mut self.kind {
             GroupByKind::Group {
                 field_index, data, ..
             } => {
-                let value = loader.try_load_field(&fields[*field_index])?;
+                let value = row
+                    .field_at(*field_index)
+                    .ok_or_else(|| anyhow!("Group field out of bounds!"))?;
                 let value_cow = value.to_key();
                 match data.get_mut(value_cow.deref()) {
                     None => {
@@ -116,7 +117,9 @@ impl<'a> GroupBy<'a> {
             GroupByKind::IntGroup {
                 field_index, data, ..
             } => {
-                let value = loader.try_load_field(&fields[*field_index])?;
+                let value = row
+                    .field_at(*field_index)
+                    .ok_or_else(|| anyhow!("Group field out of bounds!"))?;
                 let value_int = value.integer().unwrap_or(-1);
                 // FIXME: use entry
                 match data.get_mut(&value_int) {
@@ -134,17 +137,21 @@ impl<'a> GroupBy<'a> {
                 data,
                 ..
             } => {
-                let outer_value = loader.try_load_field(&fields[*outer_index])?;
-                let outer_str = outer_value.string().unwrap_or("");
-                let inner_value = loader.try_load_field(&fields[*inner_index])?;
-                let inner_str = inner_value.string().unwrap_or("");
-                match data.get_mut(outer_str) {
+                let outer_value = row
+                    .field_at(*outer_index)
+                    .ok_or_else(|| anyhow!("Group field out of bounds!"))?;
+                let outer_str = outer_value.string().unwrap_or(Cow::Borrowed(""));
+                let inner_value = row
+                    .field_at(*inner_index)
+                    .ok_or_else(|| anyhow!("Group field out of bounds!"))?;
+                let inner_str = inner_value.string().unwrap_or(Cow::Borrowed(""));
+                match data.get_mut(outer_str.as_ref()) {
                     None => {
                         let mut inner_map = BTreeMap::new();
                         inner_map.insert(inner_str.to_string(), vec![id]);
                         data.insert(outer_str.to_string(), inner_map);
                     }
-                    Some(inner_map) => match inner_map.get_mut(inner_str) {
+                    Some(inner_map) => match inner_map.get_mut(inner_str.as_ref()) {
                         None => {
                             inner_map.insert(inner_str.to_string(), vec![id]);
                         }

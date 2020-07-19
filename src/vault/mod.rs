@@ -48,7 +48,7 @@ pub struct VaultOpt {
 }
 
 fn make_urlkey(uri: &Uri) -> String {
-    let mut iter = uri.host().unwrap().rsplit(".");
+    let mut iter = uri.host().unwrap().rsplit('.');
     let tld = iter.next().unwrap(); // always valid
     let mut out = String::from(tld);
     for sub in iter {
@@ -102,7 +102,7 @@ pub fn run(opt: &VaultOpt) -> Result<(), anyhow::Error> {
         } else {
             Some(Spinner::new(
                 Spinners::BouncingBar,
-                format!("Downloading..."),
+                "Downloading...".to_string(),
             ))
         };
         let spinner_ref = &spinner;
@@ -134,7 +134,7 @@ pub fn run(opt: &VaultOpt) -> Result<(), anyhow::Error> {
                         Path::new(url_path)
                     };
 
-                    let ext = path.extension().unwrap_or(OsStr::new("html"));
+                    let ext = path.extension().unwrap_or_else(|| OsStr::new("html"));
 
                     let parent = path.parent();
                     let stem = path.file_stem().unwrap();
@@ -189,7 +189,6 @@ pub fn run(opt: &VaultOpt) -> Result<(), anyhow::Error> {
                         let mut file = FileWrapper(File::create(&store).await.unwrap());
                         res.copy_into(&mut file).await.unwrap();
                     }
-                    ()
                 }
             })
             .fold(0, |acc, _x| async move {

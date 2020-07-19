@@ -1,5 +1,5 @@
 use {
-    assembly::fdb::core::Field,
+    assembly::fdb::{align::Field as RawField, core::Field},
     miniserde::{
         json::{self, Array, Number, Object, Value},
         ser::{Fragment, Map},
@@ -20,9 +20,9 @@ pub struct HAL<T> {
 }
 
 #[derive(Debug)]
-pub struct IndexEntry<'a> {
+pub struct IndexEntry<'a, 'b> {
     pub links: BTreeMap<&'static str, Rel>,
-    pub fields: BTreeMap<&'a str, FW>,
+    pub fields: BTreeMap<&'a str, FW<'b>>,
 }
 
 pub struct ManyEntry<'a> {
@@ -121,10 +121,10 @@ impl<'a, 'b> Map for RowStream<'a, 'b> {
 #[derive(Debug)]
 pub struct Entry<'a> {
     links: &'a BTreeMap<&'static str, Rel>,
-    fields: BTreeMap<&'a str, FW>,
+    fields: BTreeMap<&'a str, FW<'a>>,
 }
 
-impl<'a> Serialize for IndexEntry<'a> {
+impl<'a, 'b> Serialize for IndexEntry<'a, 'b> {
     fn begin(&self) -> Fragment {
         Fragment::Map(Box::new(EntryStream {
             links: Some(&self.links),
@@ -144,7 +144,7 @@ impl<'a> Serialize for Entry<'a> {
 
 pub struct EntryStream<'a, 'b> {
     links: Option<&'b BTreeMap<&'static str, Rel>>,
-    state: std::collections::btree_map::Iter<'b, &'a str, FW>,
+    state: std::collections::btree_map::Iter<'b, &'a str, FW<'b>>,
 }
 
 impl<'a, 'b> Map for EntryStream<'a, 'b> {
@@ -160,30 +160,64 @@ impl<'a, 'b> Map for EntryStream<'a, 'b> {
 }
 
 #[derive(Debug)]
-pub struct FW(pub Field);
+pub struct FW<'a>(pub RawField<'a>);
 
-impl Serialize for FW {
+impl<'a> Serialize for FW<'a> {
     fn begin(&self) -> Fragment {
         match &self.0 {
-            Field::Nothing => Fragment::Null,
-            Field::Integer(i) => Fragment::I64(i64::from(*i)),
-            Field::Float(f) => Fragment::F64(f64::from(*f)),
-            Field::Text(s) => Fragment::Str(Cow::from(s)),
-            Field::Boolean(b) => Fragment::Bool(*b),
-            Field::BigInt(i) => Fragment::I64(*i),
-            Field::VarChar(s) => Fragment::Str(Cow::from(s)),
+            RawField::Nothing => Fragment::Null,
+            RawField::Integer(i) => Fragment::I64(i64::from(*i)),
+            RawField::Float(f) => Fragment::F64(f64::from(*f)),
+            RawField::Text(s) => Fragment::Str(s.decode()),
+            RawField::Boolean(b) => Fragment::Bool(*b),
+            RawField::BigInt(i) => Fragment::I64(*i),
+            RawField::VarChar(s) => Fragment::Str(s.decode()),
         }
     }
 }
 
-pub trait IntoValue {
+pub trait IntoValue<'a>: 'a {
     fn to_json(self) -> Value;
     fn integer(&self) -> Option<i32>;
-    fn string(&self) -> Option<&str>;
-    fn to_key(&self) -> Cow<str>;
+    fn string(&'a self) -> Option<Cow<'a, str>>;
+    fn to_key(&'a self) -> Cow<'a, str>;
 }
 
-impl IntoValue for Field {
+impl<'a> IntoValue<'a> for RawField<'a> {
+    fn to_json(self) -> Value {
+        match self {
+            RawField::Nothing => Value::Null,
+            RawField::Integer(i) => Value::Number(Number::I64(i64::from(i))),
+            RawField::Float(f) => Value::Number(Number::F64(f64::from(f))),
+            RawField::Text(s) => Value::String(s.decode().into_owned()),
+            RawField::Boolean(b) => Value::Bool(b),
+            RawField::BigInt(i) => Value::Number(Number::I64(i)),
+            RawField::VarChar(s) => Value::String(s.decode().into_owned()),
+        }
+    }
+
+    fn integer(&self) -> Option<i32> {
+        if let RawField::Integer(i) = self {
+            Some(*i)
+        } else {
+            None
+        }
+    }
+
+    fn string(&'a self) -> Option<Cow<'a, str>> {
+        if let RawField::Text(t) = self {
+            Some(t.decode())
+        } else {
+            None
+        }
+    }
+
+    fn to_key(&'a self) -> Cow<'a, str> {
+        todo!()
+    }
+}
+
+impl<'a> IntoValue<'a> for Field {
     fn to_json(self) -> Value {
         match self {
             Field::Nothing => Value::Null,
@@ -204,15 +238,15 @@ impl IntoValue for Field {
         }
     }
 
-    fn string(&self) -> Option<&str> {
+    fn string(&'a self) -> Option<Cow<'a, str>> {
         if let Field::Text(t) = self {
-            Some(t)
+            Some(Cow::Borrowed(t))
         } else {
             None
         }
     }
 
-    fn to_key(&self) -> Cow<str> {
+    fn to_key(&'a self) -> Cow<'a, str> {
         match self {
             Field::Nothing => Cow::Borrowed(""),
             Field::Integer(i) => Cow::Owned(i.to_string()),
@@ -244,7 +278,7 @@ impl MapExt for Value {
                         Value::Array(Array::new())
                     } else {
                         Value::Array(
-                            list.split(",")
+                            list.split(',')
                                 .map(|s| Value::String(s.trim().to_owned()))
                                 .collect(),
                         )
