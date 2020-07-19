@@ -1,10 +1,12 @@
 use {
     anyhow::anyhow,
     anyhow::{Context, Error},
+    //async_std::prelude::*,
     console::style,
     encoding_rs::WINDOWS_1252,
     encoding_rs_io::DecodeReaderBytesBuilder,
     full_moon_compat_luaparse::Chunk,
+    futures_intrusive::sync::Semaphore,
     indicatif::{ProgressBar, ProgressStyle},
     memmap::Mmap,
     miniserde::{json, Serialize},
@@ -12,7 +14,7 @@ use {
     std::{
         collections::BTreeMap,
         fs::{read_dir, File},
-        io::{BufReader, BufWriter, Read, Write},
+        io::{BufReader, Read},
         path::{Path, PathBuf},
         time::Instant,
     },
@@ -28,13 +30,17 @@ use data::Filter;
 
 mod locale;
 use assembly::fdb::align::{Database, Table};
+use crossbeam_channel::Sender;
 use fdb::{
     dblpaged_suffix, paged_suffix, setup_group_by, unpaged_suffix, CollectRow, StoreMulti,
     StoreSimple,
 };
+use io::Write;
 use locale::{expect_attribute, expect_end, expect_start, expect_text};
 use log::trace;
-use std::borrow::Cow;
+use std::{borrow::Cow, io, thread, time::Duration};
+use structopt::lazy_static::lazy_static;
+use thread::JoinHandle;
 
 mod fdb;
 
@@ -59,13 +65,36 @@ pub struct WrenchOpt {
     tables: bool,
 }
 
+pub struct WrenchState {
+    pub opt: WrenchOpt,
+    pub sender: Sender<Option<(PathBuf, String)>>,
+    pub join_handle: JoinHandle<(usize, Duration)>,
+}
+
 type Res<T> = Result<T, Error>;
 type EmptyResult = Res<()>;
 
-impl WrenchOpt {
+lazy_static! {
+    /// This is an example for using doc comment attributes
+    static ref FILE_LOCK: Semaphore = Semaphore::new(true, 5);
+}
+
+/*/async fn save_file(out: String, path: PathBuf) -> Result<(), io::Error> {
+    use async_std::fs::File;
+
+    // We need to lock this function so that the executor doesn't load all files before writing to them
+    FILE_LOCK.acquire(1).await;
+
+    let mut f_out = File::create(path).await?;
+    f_out.write_all(out.as_bytes()).await?;
+    f_out.sync_all().await?;
+    Ok(())
+}*/
+
+impl WrenchState {
     fn load_config(&self) -> Res<LoadConfig> {
         let mut buf = String::new();
-        let f_config = File::open(&self.config)?;
+        let f_config = File::open(&self.opt.config)?;
         let mut b_config = BufReader::new(f_config);
         b_config.read_to_string(&mut buf)?;
         let config = json::from_str(&buf)?;
@@ -81,12 +110,10 @@ impl WrenchOpt {
             }
         };
 
-        let p_out = self.output.join(file);
+        let p_out = self.opt.output.join(file);
 
         std::fs::create_dir_all(p_out.parent().unwrap())?;
-        let f_out = File::create(p_out)?;
-        let mut b_out = BufWriter::new(f_out);
-        write!(b_out, "{}", out)?;
+        self.sender.send(Some((p_out, out)))?;
         Ok(())
     }
 
@@ -429,12 +456,12 @@ impl WrenchOpt {
         //let thlv: Vec<_> = thl.into();
 
         let progress_bar = ProgressBar::new(tables.len() as u64);
-        progress_bar.set_prefix("Loading");
         progress_bar.set_style(
             ProgressStyle::default_bar()
                 .template("{prefix:>12.bold.cyan} [{bar:55}] {pos}/{len}: {msg}")
                 .progress_chars("=> "),
         );
+        progress_bar.set_prefix("Loading");
         progress_bar.reset();
 
         let iter = tables.iter();
@@ -543,11 +570,11 @@ impl WrenchOpt {
             if let Ok(entry) = entry {
                 if let Some(name) = entry.file_name().to_str() {
                     if name.eq_ignore_ascii_case("cdclient.fdb") {
-                        if self.tables {
+                        if self.opt.tables {
                             let path = entry.path();
                             self.run_cdc(&config, &path)?;
                         }
-                    } else if self.scripts && name.eq_ignore_ascii_case("scripts") {
+                    } else if self.opt.scripts && name.eq_ignore_ascii_case("scripts") {
                         let path = entry.path();
                         self.process_scripts(&config, &path)?;
                     }
@@ -571,16 +598,16 @@ impl WrenchOpt {
         Ok(())
     }
 
-    pub fn run(&self) -> EmptyResult {
+    pub fn run(self) -> EmptyResult {
         let config = self.load_config().with_context(|| "Loading config")?;
 
-        for entry in read_dir(&self.prefix).expect("iter files in input") {
+        for entry in read_dir(&self.opt.prefix).expect("iter files in input") {
             if let Ok(entry) = entry {
                 if let Some(name) = entry.file_name().to_str() {
                     if name.eq_ignore_ascii_case("res") {
                         let path = entry.path();
                         self.process_res(&config, &path)?;
-                    } else if self.locale && name.eq_ignore_ascii_case("locale") {
+                    } else if self.opt.locale && name.eq_ignore_ascii_case("locale") {
                         let path = entry.path();
                         self.process_locale(&config, &path)?;
                     }
@@ -588,6 +615,47 @@ impl WrenchOpt {
             }
         }
 
-        Ok(())
+        // Tell the IO thread that we are done
+        self.sender.send(None)?;
+        print!("Waiting for IO... ");
+        io::stdout().flush().expect("Could not flush stdout");
+
+        match self.join_handle.join() {
+            Ok((count, elapsed)) => {
+                println!(
+                    "\r{:>12} IO in {}.{}s ({} files)",
+                    style("Finished").green().bold(),
+                    elapsed.as_secs(),
+                    elapsed.subsec_millis(),
+                    count,
+                );
+                Ok(())
+            }
+            Err(_) => Err(anyhow!("IO failed!")),
+        }
+    }
+
+    pub fn new(opt: WrenchOpt) -> Self {
+        let (sender, r) = crossbeam_channel::unbounded();
+
+        let join_handle = thread::spawn(move || {
+            let mut count = 0;
+            let start = Instant::now();
+            while let Some((path, contents)) = r.recv().unwrap() {
+                if let Err(e) = std::fs::write(path, contents) {
+                    log::error!("{}", e);
+                }
+                count += 1;
+            }
+
+            let end = Instant::now();
+            (count, end.duration_since(start))
+        });
+
+        Self {
+            opt,
+            sender,
+            join_handle,
+        }
     }
 }

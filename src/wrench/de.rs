@@ -77,7 +77,6 @@ impl TableConfig {
                 for (key, value) in p {
                     if let Some(p) = name.map_opt(|n| n.strip_prefix(key)) {
                         prefix = Some((value.as_str(), p));
-                        break;
                     }
                 }
             }
@@ -85,7 +84,6 @@ impl TableConfig {
                 for (key, value) in p {
                     if let Some(s) = name.map_opt(|n| n.strip_suffix(key)) {
                         prefix = Some((value.as_str(), s));
-                        break;
                     }
                 }
             }
