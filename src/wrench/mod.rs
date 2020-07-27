@@ -1,46 +1,48 @@
 use {
     anyhow::anyhow,
     anyhow::{Context, Error},
-    //async_std::prelude::*,
+    assembly::fdb::align::{Database, Table},
     console::style,
+    crossbeam_channel::Sender,
     encoding_rs::WINDOWS_1252,
     encoding_rs_io::DecodeReaderBytesBuilder,
     full_moon_compat_luaparse::Chunk,
     indicatif::{ProgressBar, ProgressStyle},
+    log::trace,
     memmap::Mmap,
     miniserde::{json, Serialize},
     quick_xml::{events::Event as XmlEvent, Reader as XmlReader},
     std::{
+        borrow::Cow,
         collections::BTreeMap,
         fs::{read_dir, File},
-        io::{BufReader, Read},
+        io::{self, BufReader, Read, Write},
         path::{Path, PathBuf},
-        time::Instant,
+        thread::{self, JoinHandle},
+        time::{Duration, Instant},
     },
     structopt::StructOpt,
 };
 
-pub mod ser;
-use ser::*;
-pub mod de;
-use de::*;
 pub mod data;
-use data::Filter;
+pub mod de;
+pub mod ser;
 
+mod fdb;
 mod locale;
-use assembly::fdb::align::{Database, Table};
-use crossbeam_channel::Sender;
+mod maps;
+
+use data::Filter;
+use de::*;
+use ser::*;
+
+use assembly::luz::parser::parse_zone_file;
 use fdb::{
     dblpaged_suffix, paged_suffix, setup_group_by, unpaged_suffix, CollectRow, StoreMulti,
     StoreSimple,
 };
-use io::Write;
 use locale::{expect_attribute, expect_end, expect_start, expect_text};
-use log::trace;
-use std::{borrow::Cow, io, thread, time::Duration};
-use thread::JoinHandle;
-
-mod fdb;
+use std::ffi::OsStr;
 
 #[derive(StructOpt)]
 pub struct WrenchOpt {
@@ -61,6 +63,9 @@ pub struct WrenchOpt {
     /// Whether to serialize tables
     #[structopt(short = "T", long = "tables")]
     tables: bool,
+    /// Whether to serialize maps
+    #[structopt(short = "M", long = "maps")]
+    maps: bool,
 }
 
 pub struct WrenchState {
@@ -91,6 +96,10 @@ impl WrenchState {
             }
         };
 
+        self.save_file(file, out)
+    }
+
+    fn save_file(&self, file: &Path, out: String) -> Res<()> {
         let p_out = self.opt.output.join(file);
 
         std::fs::create_dir_all(p_out.parent().unwrap())?;
@@ -467,14 +476,88 @@ impl WrenchState {
         Ok(())
     }
 
-    pub fn process_scripts_folder(
+    /// Process a script file
+    pub fn process_script_file(&self, path: &Path, relative: &Path, path_out: &Path) -> Res<()> {
+        if path.extension() == Some(OsStr::new("lua")) {
+            let lua_file = File::open(&path)?;
+            let lua_buf_reader = BufReader::new(lua_file);
+            let mut reader = DecodeReaderBytesBuilder::new()
+                .encoding(Some(WINDOWS_1252))
+                .build(lua_buf_reader);
+            let mut lua_text = String::new();
+            reader.read_to_string(&mut lua_text)?;
+
+            let lua_ast = full_moon::parse(&lua_text).map_err(|e| anyhow!("{}", e))?;
+
+            let chunk = Chunk::wrap(&lua_ast);
+            let mut path_out_chunk = path_out.join(relative);
+            path_out_chunk.set_extension("lua.json");
+            self.make_file(&path_out_chunk, &chunk)?;
+        }
+        Ok(())
+    }
+
+    /// Process a zone file
+    pub fn process_zone_file(&self, path: &Path, relative: &Path, path_out: &Path) -> Res<()> {
+        let mut filename_out = path_out.join(relative);
+
+        match path.extension().and_then(OsStr::to_str) {
+            Some("luz") => {
+                let buffer = std::fs::read(path)?;
+                let zone_file = parse_zone_file(&buffer)
+                    .map_err(|nerr| anyhow!("Failed to parse zone file\n{}", nerr))?
+                    .1;
+
+                let zone_file = zone_file
+                    .parse_paths()
+                    .map_err(|(_a, b)| anyhow!("Failed to parse zone paths\n{}", b))?;
+
+                let text = serde_json::to_string(&zone_file)?;
+
+                filename_out.set_extension("luz.json");
+                self.save_file(&filename_out, text)?;
+                Ok(()) //Err(anyhow!("OUT-LUZ: {}", filename_out.display()))
+            }
+            Some("lvl") => {
+                filename_out.set_extension("lvl.json");
+                Err(anyhow!("OUT-LVL: {}", filename_out.display()))
+            }
+            Some("raw") => {
+                filename_out.set_extension("raw.json");
+                Err(anyhow!("OUT-RAW: {}", filename_out.display()))
+            }
+            Some("zal") => {
+                filename_out.set_extension("zal.json");
+                Err(anyhow!("OUT-ZAL: {}", filename_out.display()))
+            }
+            Some("ast") => {
+                filename_out.set_extension("ast.json");
+                Err(anyhow!("OUT-AST: {}", filename_out.display()))
+            }
+            Some("evc") => {
+                filename_out.set_extension("evc.json");
+                Err(anyhow!("OUT-EVC: {}", filename_out.display()))
+            }
+            Some("lutriggers") => {
+                filename_out.set_extension("lut.json");
+                Err(anyhow!("OUT-LUT: {}", filename_out.display()))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub fn process_recursive_folder<F>(
         &self,
         config: &LoadConfig,
         path: &Path,
         root: &Path,
-        path_out_scripts: &Path,
+        path_out: &Path,
         progress_bar: ProgressBar,
-    ) -> Res<()> {
+        process: F,
+    ) -> Res<()>
+    where
+        F: Fn(&Self, &Path, &Path, &Path) -> Res<()> + Copy,
+    {
         for entry in read_dir(path).expect("iter files in input") {
             if let Ok(entry) = entry {
                 let path = entry.path();
@@ -482,34 +565,18 @@ impl WrenchState {
                 progress_bar.set_message(&format!("{}", relative.display()));
 
                 if path.is_dir() {
-                    self.process_scripts_folder(
+                    self.process_recursive_folder(
                         config,
                         &path,
                         root,
-                        path_out_scripts,
+                        path_out,
                         progress_bar.clone(),
+                        process,
                     )?;
-                } else if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("lua")) {
-                    let lua_file = std::fs::File::open(&path)?;
-                    let lua_buf_reader = BufReader::new(lua_file);
-                    let mut reader = DecodeReaderBytesBuilder::new()
-                        .encoding(Some(WINDOWS_1252))
-                        .build(lua_buf_reader);
-                    let mut lua_text = String::new();
-                    reader.read_to_string(&mut lua_text)?;
-
-                    let res = full_moon::parse(&lua_text);
-                    match res {
-                        Ok(lua_ast) => {
-                            let chunk = Chunk::wrap(&lua_ast);
-                            let mut path_out_chunk = path_out_scripts.join(relative);
-                            path_out_chunk.set_extension("lua.json");
-                            self.make_file(&path_out_chunk, &chunk)?;
-                        }
-                        Err(error) => {
-                            progress_bar.println(&format!("File: {}", path.display()));
-                            progress_bar.println(&format!("{}", error));
-                        }
+                } else if path.is_file() {
+                    if let Err(error) = process(self, &path, relative, path_out) {
+                        progress_bar.println(&format!("File: {}", path.display()));
+                        progress_bar.println(&format!("{}", error));
                     }
                 }
             }
@@ -517,9 +584,18 @@ impl WrenchState {
         Ok(())
     }
 
-    pub fn process_scripts(&self, config: &LoadConfig, path: &Path) -> Res<()> {
+    pub fn process_recursive<F>(
+        &self,
+        config: &LoadConfig,
+        key: &str,
+        path: &Path,
+        process: F,
+    ) -> Res<()>
+    where
+        F: Fn(&Self, &Path, &Path, &Path) -> Res<()> + Copy,
+    {
         let path_out = Path::new("lu-json");
-        let path_out_scripts = path_out.join("scripts");
+        let path_out_key = path_out.join(key);
 
         let started = Instant::now();
         let progress_bar = ProgressBar::new_spinner();
@@ -528,18 +604,20 @@ impl WrenchState {
         progress_bar.set_style(
             ProgressStyle::default_spinner().template("{prefix:>12.bold.cyan} {spinner} {msg}"),
         );
-        self.process_scripts_folder(
+        self.process_recursive_folder(
             &config,
             &path,
             &path,
-            &path_out_scripts,
+            &path_out_key,
             progress_bar.clone(),
+            process,
         )?;
         progress_bar.finish_and_clear();
         let elapsed = started.elapsed();
         println!(
-            "{:>12} scripts in {}.{}s",
+            "{:>12} {} in {}.{}s",
             style("Finished").green().bold(),
+            key,
             elapsed.as_secs(),
             elapsed.subsec_millis(),
         );
@@ -557,7 +635,15 @@ impl WrenchState {
                         }
                     } else if self.opt.scripts && name.eq_ignore_ascii_case("scripts") {
                         let path = entry.path();
-                        self.process_scripts(&config, &path)?;
+                        self.process_recursive(
+                            &config,
+                            "scripts",
+                            &path,
+                            Self::process_script_file,
+                        )?;
+                    } else if self.opt.maps && name.eq_ignore_ascii_case("maps") {
+                        let path = entry.path();
+                        self.process_recursive(&config, "maps", &path, Self::process_zone_file)?;
                     }
                 }
             }

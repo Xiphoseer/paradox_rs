@@ -1,4 +1,4 @@
-use paradox::{vault, Opt, wrench::WrenchState};
+use paradox::{vault, wrench::WrenchState, Opt};
 use structopt::StructOpt;
 
 fn main() -> Result<(), anyhow::Error> {
