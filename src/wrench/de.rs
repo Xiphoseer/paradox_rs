@@ -1,6 +1,6 @@
 use super::{data::Filter, Res};
 use anyhow::anyhow;
-use assembly::fdb::{align::Table, core::ValueType};
+use assembly::fdb::{common::ValueType, mem::Table};
 use miniserde::json;
 use std::borrow::Cow;
 use {

@@ -1,5 +1,7 @@
+use std::collections::btree_map;
+
 use {
-    assembly::fdb::{align::Field as RawField, core::Field},
+    assembly::fdb::{core::Field, mem::Field as RawField},
     miniserde::{
         json::{self, Array, Number, Object, Value},
         ser::{Fragment, Map},
@@ -118,11 +120,11 @@ impl<'a, 'b> Map for RowStream<'a, 'b> {
     }
 }
 
-#[derive(Debug)]
-pub struct Entry<'a> {
+/*#[derive(Debug)]
+pub struct Entry<'a, 'b> {
     links: &'a BTreeMap<&'static str, Rel>,
-    fields: BTreeMap<&'a str, FW<'a>>,
-}
+    fields: BTreeMap<&'a str, FW<'b>>,
+}*/
 
 impl<'a, 'b> Serialize for IndexEntry<'a, 'b> {
     fn begin(&self) -> Fragment {
@@ -133,21 +135,21 @@ impl<'a, 'b> Serialize for IndexEntry<'a, 'b> {
     }
 }
 
-impl<'a> Serialize for Entry<'a> {
+/*impl<'a: 'b, 'b> Serialize for Entry<'a, 'b> {
     fn begin(&self) -> Fragment {
         Fragment::Map(Box::new(EntryStream {
             links: Some(self.links),
             state: self.fields.iter(),
         }))
     }
-}
+}*/
 
-pub struct EntryStream<'a, 'b> {
+pub struct EntryStream<'a, 'b, 'c> {
     links: Option<&'b BTreeMap<&'static str, Rel>>,
-    state: std::collections::btree_map::Iter<'b, &'a str, FW<'b>>,
+    state: btree_map::Iter<'b, &'a str, FW<'c>>,
 }
 
-impl<'a, 'b> Map for EntryStream<'a, 'b> {
+impl<'a, 'b, 'c> Map for EntryStream<'a, 'b, 'c> {
     fn next(&mut self) -> Option<(Cow<str>, &dyn Serialize)> {
         if let Some(links) = self.links.take() {
             Some((Cow::Borrowed("_links"), links))

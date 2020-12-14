@@ -1,7 +1,7 @@
 use {
     anyhow::anyhow,
     anyhow::{Context, Error},
-    assembly::fdb::align::{Database, Table},
+    assembly::fdb::mem::{Database, Table},
     console::style,
     crossbeam_channel::Sender,
     encoding_rs::WINDOWS_1252,
@@ -36,7 +36,7 @@ use data::Filter;
 use de::*;
 use ser::*;
 
-use assembly::luz::parser::parse_zone_file;
+use assembly::{luz::parser::parse_zone_file, lvl::reader::LevelReader};
 use fdb::{
     dblpaged_suffix, paged_suffix, setup_group_by, unpaged_suffix, CollectRow, StoreMulti,
     StoreSimple,
@@ -54,6 +54,9 @@ pub struct WrenchOpt {
     /// The path to the configuration json
     config: PathBuf,
 
+    /// Whether this run actually saves any files
+    #[structopt(short = "D", long = "dry-run")]
+    dry_run: bool,
     /// Whether to serialize scripts
     #[structopt(short = "S", long = "scripts")]
     scripts: bool,
@@ -68,9 +71,14 @@ pub struct WrenchOpt {
     maps: bool,
 }
 
+pub struct SaveWorkload {
+    path: PathBuf,
+    content: String,
+}
+
 pub struct WrenchState {
     pub opt: WrenchOpt,
-    pub sender: Sender<Option<(PathBuf, String)>>,
+    pub sender: Sender<Option<SaveWorkload>>,
     pub join_handle: JoinHandle<(usize, Duration)>,
 }
 
@@ -101,9 +109,10 @@ impl WrenchState {
 
     fn save_file(&self, file: &Path, out: String) -> Res<()> {
         let p_out = self.opt.output.join(file);
-
-        std::fs::create_dir_all(p_out.parent().unwrap())?;
-        self.sender.send(Some((p_out, out)))?;
+        self.sender.send(Some(SaveWorkload {
+            path: p_out,
+            content: out,
+        }))?;
         Ok(())
     }
 
@@ -240,7 +249,7 @@ impl WrenchState {
                 self.make_file(&path_table_index, &j_index)?;
 
                 let path_table_group_by = path_table.join("groupBy");
-                for group in group_by {
+                for group in &group_by {
                     let mut path_table_group = path_table_group_by.join(&group.group_name);
                     path_table_group.set_extension("json");
                     self.make_file(&path_table_group, &group.result())?;
@@ -437,7 +446,7 @@ impl WrenchState {
         let buffer: &[u8] = &mmap;
         let db = Database::new(buffer);
 
-        let tables = db.tables();
+        let tables = db.tables()?;
         //let mut loader = BufReader::new(file);
 
         //let h = loader.get_header()?;
@@ -460,6 +469,7 @@ impl WrenchState {
         let path_tables = path.join("tables");
 
         for th in iter {
+            let th = th?;
             self.run_store_table(th, &config, &path_tables, progress_bar.clone())?;
             progress_bar.inc(1);
         }
@@ -510,7 +520,7 @@ impl WrenchState {
 
                 let zone_file = zone_file
                     .parse_paths()
-                    .map_err(|(_a, b)| anyhow!("Failed to parse zone paths\n{}", b))?;
+                    .map_err(|(_a, b)| anyhow!("Failed to parse zone paths\n{:?}@{}", b.1, b.0))?;
 
                 let text = serde_json::to_string(&zone_file)?;
 
@@ -519,10 +529,18 @@ impl WrenchState {
                 Ok(()) //Err(anyhow!("OUT-LUZ: {}", filename_out.display()))
             }
             Some("lvl") => {
+                let file = File::open(path)?;
+                let br = BufReader::new(file);
+                let mut lvl = LevelReader::new(br);
+                let level = lvl.read_level_file()?;
+
+                let text = serde_json::to_string(&level)?;
+
                 filename_out.set_extension("lvl.json");
-                Err(anyhow!("OUT-LVL: {}", filename_out.display()))
+                self.save_file(&filename_out, text)?;
+                Ok(())
             }
-            Some("raw") => {
+            /*Some("raw") => {
                 filename_out.set_extension("raw.json");
                 Err(anyhow!("OUT-RAW: {}", filename_out.display()))
             }
@@ -541,7 +559,7 @@ impl WrenchState {
             Some("lutriggers") => {
                 filename_out.set_extension("lut.json");
                 Err(anyhow!("OUT-LUT: {}", filename_out.display()))
-            }
+            }*/
             _ => Ok(()),
         }
     }
@@ -704,15 +722,25 @@ impl WrenchState {
 
     pub fn new(opt: WrenchOpt) -> Self {
         let (sender, r) = crossbeam_channel::unbounded();
-
+        let is_dry_run = opt.dry_run;
         let join_handle = thread::spawn(move || {
             let mut count = 0;
             let start = Instant::now();
-            while let Some((path, contents)) = r.recv().unwrap() {
-                if let Err(e) = std::fs::write(path, contents) {
-                    log::error!("{}", e);
+            if is_dry_run {
+                while let Some(SaveWorkload { .. }) = r.recv().unwrap() {
+                    count += 1;
                 }
-                count += 1;
+            } else {
+                while let Some(SaveWorkload { path, content }) = r.recv().unwrap() {
+                    let parent: &Path = path.parent().unwrap();
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        log::error!("{}", e);
+                    } else if let Err(e) = std::fs::write(path, content) {
+                        log::error!("{}", e);
+                    }
+
+                    count += 1;
+                }
             }
 
             let end = Instant::now();

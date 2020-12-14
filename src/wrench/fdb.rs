@@ -6,8 +6,8 @@ use super::{
 };
 use anyhow::anyhow;
 use assembly::fdb::{
-    align::{Row as RawRow, Table as RawTable},
-    core::ValueType,
+    common::ValueType,
+    mem::{Row as RawRow, Table as RawTable},
 };
 use derive_new::new;
 use miniserde::json;
@@ -227,19 +227,19 @@ where
 
 #[derive(new)]
 #[allow(clippy::too_many_arguments)]
-pub struct StoreSimple<'a, 'b, M: Fn(&Path, &Row) -> Res<()>> {
+pub struct StoreSimple<'a, 'c, M: Fn(&Path, &Row) -> Res<()>> {
     ignore: &'a [Filter<'a>],
     pk: usize,
     path_table: &'a PathBuf,
     paginator: fn(i32, &mut PathBuf),
     indexer: &'a BTreeMap<String, usize>,
     collect_row: CollectRow<'a>,
-    group_by: &'b mut [GroupBy<'a>],
+    group_by: &'c mut [GroupBy<'a>],
     make_file: M,
 }
 
-impl<'a, 'b, M: Fn(&Path, &Row) -> Res<()>> StoreSimple<'a, 'b, M> {
-    pub(crate) fn invoke(mut self, table: RawTable<'b>) -> Res<Vec<IndexEntry<'a, 'b>>> {
+impl<'a, 'c, M: Fn(&Path, &Row) -> Res<()>> StoreSimple<'a, 'c, M> {
+    pub(crate) fn invoke<'b>(mut self, table: RawTable<'b>) -> Res<Vec<IndexEntry<'a, 'b>>> {
         let mut vec = Vec::new();
         for row in table.row_iter() {
             if let Some(entry) = self.process_row(row)? {
@@ -249,7 +249,7 @@ impl<'a, 'b, M: Fn(&Path, &Row) -> Res<()>> StoreSimple<'a, 'b, M> {
         Ok(vec)
     }
 
-    fn process_row(&mut self, row: RawRow<'b>) -> Res<Option<IndexEntry<'a, 'b>>> {
+    fn process_row<'b>(&mut self, row: RawRow<'b>) -> Res<Option<IndexEntry<'a, 'b>>> {
         for filter in self.ignore.iter() {
             if filter.check(row)? {
                 // continue

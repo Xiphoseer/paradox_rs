@@ -15,8 +15,8 @@ crossbeam-channel = "0.4"
 derive-new = "0.5"
 encoding_rs_io = "0.1.7"
 encoding_rs = "0.8"
-full_moon = { git="https://github.com/Kampfkarren/full-moon.git", default-features = false }
-full-moon-compat-luaparse = { path = "../full-moon-compat-luaparse" }
+full_moon = { version = "0.6.1", default-features = false }
+full-moon-compat-luaparse = { version = "0.1", path = "../full-moon-compat-luaparse" }
 futures = "0.3"
 http = "0.2"
 indicatif = "0.14"
@@ -24,16 +24,14 @@ log = "0.4"
 miniserde = "0.1"
 memmap = "0.7"
 quick-xml = "0.17"
-#reqwest = "0.9"
 serde = "1"
 serde_json = "1"
 spinners = "1.2"
 structopt = "0.3"
 surf = "2.0.0-alpha"
-#tokio = { version = "0.2", features = ["fs"] }
-wayback = { path = "../wayback" }
+wayback-urls = { version = "0.1", path = "../wayback" }
 
 [dependencies.assembly]
-version = "0.6"
+version = "0.7.0-beta.1"
 path = "../assembly/modules/full"
 features = ["serde-derives"]

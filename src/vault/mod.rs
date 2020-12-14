@@ -11,7 +11,7 @@ use std::{
 };
 use structopt::StructOpt;
 use surf::Client;
-use wayback::timemap::{Field, FilterBuf, GroupField, Request};
+use wayback_urls::timemap::{Field, FilterBuf, GroupField, Request};
 
 #[derive(StructOpt)]
 pub struct VaultOpt {
@@ -51,10 +51,10 @@ fn make_urlkey(uri: &Uri) -> String {
     let tld = iter.next().unwrap(); // always valid
     let mut out = String::from(tld);
     for sub in iter {
-        out.push_str(",");
+        out.push(',');
         out.push_str(sub);
     }
-    out.push_str(")");
+    out.push(')');
     out.push_str(uri.path_and_query().unwrap().as_str());
     out
 }

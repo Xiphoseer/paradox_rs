@@ -1,7 +1,7 @@
 use super::ser::IntoValue;
 use super::{EmptyResult, Res};
 use anyhow::anyhow;
-use assembly::fdb::align::Row as RawRow;
+use assembly::fdb::mem::Row as RawRow;
 use miniserde::Serialize;
 use std::{borrow::Cow, collections::btree_map::BTreeMap, ops::Deref};
 
