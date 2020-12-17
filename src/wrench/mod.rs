@@ -2,6 +2,7 @@ use {
     anyhow::anyhow,
     anyhow::{Context, Error},
     assembly::fdb::mem::{Database, Table},
+    assembly::xml::quick::{events::Event as XmlEvent, Reader as XmlReader},
     console::style,
     crossbeam_channel::Sender,
     encoding_rs::WINDOWS_1252,
@@ -11,7 +12,6 @@ use {
     log::trace,
     memmap::Mmap,
     miniserde::{json, Serialize},
-    quick_xml::{events::Event as XmlEvent, Reader as XmlReader},
     std::{
         borrow::Cow,
         collections::BTreeMap,
@@ -29,19 +29,18 @@ pub mod de;
 pub mod ser;
 
 mod fdb;
-mod locale;
 mod maps;
 
 use data::Filter;
 use de::*;
 use ser::*;
 
+use assembly::xml::common::exact::{expect_attribute, expect_end, expect_start, expect_text};
 use assembly::{luz::parser::parse_zone_file, lvl::reader::LevelReader};
 use fdb::{
     dblpaged_suffix, paged_suffix, setup_group_by, unpaged_suffix, CollectRow, StoreMulti,
     StoreSimple,
 };
-use locale::{expect_attribute, expect_end, expect_start, expect_text};
 use std::ffi::OsStr;
 
 #[derive(StructOpt)]
@@ -373,7 +372,7 @@ impl WrenchState {
                         if e.name() == b"phrase" {
                             break;
                         } else {
-                            let name_str = reader.decode(e.name())?;
+                            let name_str = reader.decode(e.name());
                             return Err(anyhow!("Unexpected end tag </{}>", name_str));
                         }
                     }
@@ -381,7 +380,7 @@ impl WrenchState {
                         if e.name() == b"translation" {
                             e
                         } else {
-                            let name_str = reader.decode(e.name())?;
+                            let name_str = reader.decode(e.name());
                             return Err(anyhow!("Unexpected tag <{}>", name_str));
                         }
                     }
